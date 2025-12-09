@@ -1,18 +1,70 @@
 """
-Device Manager - Audio device discovery and identification.
+Device Manager - Cross-platform audio device discovery and identification.
 
 Run this module directly to list all available audio devices:
     python -m src.device_manager
 """
 
 import sounddevice as sd
+import platform
 from typing import Optional
+
+# Common virtual cable device names by platform
+VIRTUAL_CABLE_NAMES = [
+    # macOS
+    "blackhole",
+    # Windows
+    "cable",  # VB-Cable shows as "CABLE Input" / "CABLE Output"
+    "vb-audio",
+    "virtual cable",
+    "voicemeeter",
+    # Linux
+    "virtualcable",
+    "null",  # PulseAudio null sink
+    "pipewire",  # PipeWire virtual devices
+]
+
+# Common microphone names by platform
+MICROPHONE_NAMES = [
+    # macOS
+    "macbook",
+    "built-in",
+    # Windows
+    "microphone",
+    "realtek",
+    "high definition audio",
+    # Linux
+    "capture",
+    "input",
+    "alsa",
+]
+
+# Common speaker names by platform
+SPEAKER_NAMES = [
+    # macOS
+    "macbook",
+    "built-in",
+    "speakers",
+    # Windows
+    "speakers",
+    "realtek",
+    "high definition audio",
+    # Linux
+    "output",
+    "playback",
+    "alsa",
+]
+
+
+def get_platform_info() -> str:
+    """Get current platform information."""
+    return f"{platform.system()} {platform.release()}"
 
 
 def list_devices() -> None:
     """List all available audio devices with their properties."""
     print("\n" + "=" * 60)
-    print("AUDIO DEVICES")
+    print(f"AUDIO DEVICES ({get_platform_info()})")
     print("=" * 60)
 
     devices = sd.query_devices()
@@ -71,6 +123,31 @@ def find_device_by_name(name: str, kind: Optional[str] = None) -> Optional[int]:
     return None
 
 
+def find_virtual_cables() -> list[dict]:
+    """
+    Find all virtual audio cables on the system.
+
+    Returns:
+        List of device info dicts for detected virtual cables
+    """
+    devices = sd.query_devices()
+    cables = []
+
+    for i, device in enumerate(devices):
+        name_lower = device["name"].lower()
+        for cable_name in VIRTUAL_CABLE_NAMES:
+            if cable_name in name_lower and device["max_output_channels"] > 0:
+                cables.append({
+                    "id": i,
+                    "name": device["name"],
+                    "channels": device["max_output_channels"],
+                    "sample_rate": device["default_samplerate"],
+                })
+                break
+
+    return cables
+
+
 def get_device_info(device_id: int) -> dict:
     """Get detailed information about a specific device."""
     device = sd.query_devices(device_id)
@@ -91,12 +168,55 @@ def print_configuration_help() -> None:
     print("CONFIGURATION INSTRUCTIONS")
     print("=" * 60)
 
-    # Try to auto-detect common devices
-    blackhole = find_device_by_name("blackhole", "output")
-    speakers = find_device_by_name("macbook", "output") or find_device_by_name("speaker", "output")
-    mic = find_device_by_name("macbook", "input") or find_device_by_name("microphone", "input")
+    # Detect virtual cables
+    cables = find_virtual_cables()
+    if cables:
+        print("\nDETECTED VIRTUAL CABLES:")
+        for cable in cables:
+            print(f"  - {cable['name']} (ID: {cable['id']}, Channels: {cable['channels']})")
+    else:
+        print("\nNO VIRTUAL CABLES DETECTED")
+        system = platform.system()
+        if system == "Darwin":
+            print("  Install BlackHole: brew install blackhole-2ch")
+        elif system == "Windows":
+            print("  Install VB-Cable: https://vb-audio.com/Cable/")
+        else:
+            print("  Create a virtual sink with PulseAudio:")
+            print("  pactl load-module module-null-sink sink_name=VirtualCable")
 
-    print("\nUpdate your config.yaml with these device IDs:")
+    # Try to auto-detect common devices
+    # Look for virtual cable first
+    cable = None
+    for cable_name in VIRTUAL_CABLE_NAMES:
+        cable = find_device_by_name(cable_name, "output")
+        if cable is not None:
+            break
+
+    # Look for microphone
+    mic = None
+    for mic_name in MICROPHONE_NAMES:
+        mic = find_device_by_name(mic_name, "input")
+        if mic is not None:
+            break
+
+    # Look for speakers (exclude virtual cables)
+    speakers = None
+    devices = sd.query_devices()
+    for i, device in enumerate(devices):
+        if device["max_output_channels"] > 0:
+            name_lower = device["name"].lower()
+            # Skip if it's a virtual cable
+            is_cable = any(cn in name_lower for cn in VIRTUAL_CABLE_NAMES)
+            if not is_cable:
+                for speaker_name in SPEAKER_NAMES:
+                    if speaker_name in name_lower:
+                        speakers = i
+                        break
+            if speakers is not None:
+                break
+
+    print("\nSUGGESTED config.yaml:")
     print("\ndevices:")
 
     if mic is not None:
@@ -105,17 +225,23 @@ def print_configuration_help() -> None:
     else:
         print("  mic_id: <YOUR_MIC_ID>      # Find your microphone above")
 
-    if blackhole is not None:
-        dev = sd.query_devices(blackhole)
-        print(f"  cable_id: {blackhole}    # {dev['name']}")
+    if cable is not None:
+        dev = sd.query_devices(cable)
+        print(f"  cable_id: {cable}    # {dev['name']}")
     else:
-        print("  cable_id: <BLACKHOLE_ID>   # Install BlackHole: brew install blackhole-2ch")
+        print("  cable_id: <CABLE_ID>       # Install a virtual audio cable first")
 
     if speakers is not None:
         dev = sd.query_devices(speakers)
         print(f"  speaker_id: {speakers}  # {dev['name']}")
     else:
         print("  speaker_id: <SPEAKER_ID>   # Find your speakers above")
+
+    # Print output_channels recommendation based on detected cable
+    if cables:
+        cable_channels = cables[0]["channels"]
+        print(f"\naudio:")
+        print(f"  output_channels: {cable_channels}  # Matches {cables[0]['name']}")
 
     print("\n" + "=" * 60)
 

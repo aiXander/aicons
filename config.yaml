@@ -1,26 +1,40 @@
-# Loopback MVP Configuration
+# AICONS Configuration
 # Run `python -m src.device_manager` to find your device IDs
 
 # Audio Device IDs
 # These must be set after running device_manager.py to identify your devices
+# Device IDs are platform-specific - run device_manager on each system
 devices:
-  # Microphone input (e.g., MacBook Pro Microphone)
+  # Microphone input device ID
+  # Examples: MacBook Pro Microphone (macOS), Microphone Array (Windows)
   mic_id: 1
-  # Virtual cable output (e.g., BlackHole 2ch)
+
+  # Virtual cable output device ID
+  # Examples: BlackHole 2ch (macOS), CABLE Input (Windows), VirtualCable (Linux)
   cable_id: 0
-  # Speaker output for monitoring (e.g., MacBook Pro Speakers)
+
+  # Speaker output for monitoring (optional, for hearing agent responses)
+  # Examples: MacBook Pro Speakers (macOS), Speakers (Windows)
   speaker_id: 2
 
 # Audio Settings
 audio:
   # Sample rate in Hz (ElevenLabs standard is 16000)
   sample_rate: 16000
-  # Number of audio channels for input (1 = mono for ElevenLabs)
+
+  # Number of input channels (1 = mono, required for ElevenLabs)
   channels: 1
-  # Number of channels for output devices (2 for BlackHole 2ch and speakers)
+
+  # Number of output channels for virtual cable
+  # Set to match your virtual cable:
+  #   - BlackHole 2ch: 2
+  #   - VB-Cable: 2
+  #   - Custom setups: check with device_manager.py
   output_channels: 2
-  # Audio data type
+
+  # Audio data type (int16 for ElevenLabs compatibility)
   dtype: int16
+
   # Buffer size for audio streams (frames per buffer)
   # Lower = less latency but more CPU, Higher = more latency but stable
   buffer_size: 1024
