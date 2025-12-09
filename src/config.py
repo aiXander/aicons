@@ -44,6 +44,13 @@ class UIConfig:
 
 
 @dataclass
+class MonitorConfig:
+    """Monitor loop settings."""
+
+    enabled: bool
+
+
+@dataclass
 class DebugConfig:
     """Debug and logging settings."""
 
@@ -63,6 +70,7 @@ class AppConfig:
     devices: DeviceConfig
     audio: AudioConfig
     ui: UIConfig
+    monitor: MonitorConfig
     debug: DebugConfig
 
 
@@ -173,6 +181,12 @@ def load_config(
         window_height=ui_yaml.get("window_height", 300),
     )
 
+    # Parse monitor config
+    monitor_yaml = yaml_config.get("monitor", {})
+    monitor = MonitorConfig(
+        enabled=monitor_yaml.get("enabled", True),
+    )
+
     # Parse debug config
     debug_yaml = yaml_config.get("debug", {})
     debug = DebugConfig(
@@ -186,6 +200,7 @@ def load_config(
         devices=devices,
         audio=audio,
         ui=ui,
+        monitor=monitor,
         debug=debug,
     )
 
@@ -207,8 +222,9 @@ def validate_config(config: AppConfig) -> tuple[bool, list[str]]:
         errors.append("devices.mic_id is not configured in config.yaml")
     if config.devices.cable_id is None:
         errors.append("devices.cable_id is not configured in config.yaml")
-    if config.devices.speaker_id is None:
-        errors.append("devices.speaker_id is not configured in config.yaml")
+    # speaker_id is only required when monitor is enabled
+    if config.monitor.enabled and config.devices.speaker_id is None:
+        errors.append("devices.speaker_id is not configured in config.yaml (required when monitor.enabled is true)")
 
     # Check audio settings
     if config.audio.sample_rate <= 0:
@@ -239,6 +255,13 @@ def print_config(config: AppConfig) -> None:
     print(f"  Output Channels: {config.audio.output_channels}")
     print(f"  Data Type: {config.audio.dtype}")
     print(f"  Buffer Size: {config.audio.buffer_size}")
+
+    print("\nMonitor Settings:")
+    print(f"  Enabled: {config.monitor.enabled}")
+    if config.monitor.enabled:
+        print(f"  Audio Output: Speakers (Device {config.devices.speaker_id})")
+    else:
+        print(f"  Audio Output: Virtual Cable only (available to external apps)")
 
     print("\nDebug Settings:")
     print(f"  Verbose Audio: {config.debug.verbose_audio}")

@@ -92,6 +92,7 @@ class AgentUI:
         window_title: str,
         config_info: Dict[str, str],
         callbacks: UICallbacks,
+        monitor_enabled: bool = True,
     ):
         """
         Initialize the UI.
@@ -101,9 +102,11 @@ class AgentUI:
             window_title: Title for the application window
             config_info: Dictionary of configuration info to display
             callbacks: Container with callback functions for user actions
+            monitor_enabled: Whether the monitor loop is enabled (affects audio routing display)
         """
         self.root = root
         self.callbacks = callbacks
+        self.monitor_enabled = monitor_enabled
 
         # Track debug panel visibility
         self.debug_visible = True
@@ -398,7 +401,7 @@ class AgentUI:
         self._build_log_panel(content_frame)
 
     def _build_header(self) -> None:
-        """Build the header section with title and status."""
+        """Build the header section with title, status, and audio routing indicator."""
         header_frame = tk.Frame(self.main_container, bg=Theme.BG_PRIMARY)
         header_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -445,6 +448,59 @@ class AgentUI:
             fg=Theme.TEXT_MUTED,
         )
         self.status_label.pack(side=tk.LEFT)
+
+        # Audio routing indicator (between title and status)
+        self._build_audio_routing_indicator(header_frame)
+
+    def _build_audio_routing_indicator(self, parent: tk.Frame) -> None:
+        """Build the audio routing indicator showing where audio is being sent."""
+        # Container for audio routing info
+        routing_frame = tk.Frame(
+            parent,
+            bg=Theme.BG_SECONDARY,
+            padx=16,
+            pady=10,
+            highlightbackground=Theme.BORDER,
+            highlightthickness=1,
+        )
+        routing_frame.pack(side=tk.RIGHT, padx=(0, 16))
+
+        # Icon/indicator based on monitor state
+        if self.monitor_enabled:
+            # Monitor enabled - audio goes to speakers
+            icon_text = "🔊"
+            routing_text = "Audio → Speakers"
+            status_color = Theme.ACCENT_GREEN
+            tooltip = "Monitor ON: You will hear agent audio through speakers"
+        else:
+            # Monitor disabled - audio only on virtual cable
+            icon_text = "🎚"
+            routing_text = "Audio → Virtual Cable"
+            status_color = Theme.ACCENT_PURPLE
+            tooltip = "Monitor OFF: Audio available for external apps (e.g., Unreal Engine)"
+
+        # Icon
+        icon_label = tk.Label(
+            routing_frame,
+            text=icon_text,
+            font=("SF Pro Display", 16),
+            bg=Theme.BG_SECONDARY,
+            fg=status_color,
+        )
+        icon_label.pack(side=tk.LEFT, padx=(0, 8))
+
+        # Routing text
+        self.routing_label = tk.Label(
+            routing_frame,
+            text=routing_text,
+            font=("SF Pro Display", 12),
+            bg=Theme.BG_SECONDARY,
+            fg=status_color,
+        )
+        self.routing_label.pack(side=tk.LEFT)
+
+        # Store reference to the frame for potential updates
+        self.routing_frame = routing_frame
 
     def _load_profile_image(self, panel_width: int) -> Optional[ImageTk.PhotoImage]:
         """

@@ -246,9 +246,14 @@ def print_configuration_help() -> None:
     print("\n" + "=" * 60)
 
 
-def validate_devices(mic_id: int, cable_id: int, speaker_id: int) -> tuple[bool, list[str]]:
+def validate_devices(mic_id: int, cable_id: int, speaker_id: Optional[int]) -> tuple[bool, list[str]]:
     """
     Validate that the configured device IDs are valid.
+
+    Args:
+        mic_id: Microphone device ID (required)
+        cable_id: Virtual cable device ID (required)
+        speaker_id: Speaker device ID (optional - None when monitor is disabled)
 
     Returns:
         Tuple of (is_valid, list of error messages)
@@ -273,13 +278,12 @@ def validate_devices(mic_id: int, cable_id: int, speaker_id: int) -> tuple[bool,
     elif devices[cable_id]["max_output_channels"] == 0:
         errors.append(f"Device {cable_id} ({devices[cable_id]['name']}) has no output channels")
 
-    # Check speaker
-    if speaker_id is None:
-        errors.append("speaker_id is not configured")
-    elif speaker_id >= num_devices:
-        errors.append(f"speaker_id {speaker_id} does not exist")
-    elif devices[speaker_id]["max_output_channels"] == 0:
-        errors.append(f"Device {speaker_id} ({devices[speaker_id]['name']}) has no output channels")
+    # Check speaker (only if provided - not needed when monitor is disabled)
+    if speaker_id is not None:
+        if speaker_id >= num_devices:
+            errors.append(f"speaker_id {speaker_id} does not exist")
+        elif devices[speaker_id]["max_output_channels"] == 0:
+            errors.append(f"Device {speaker_id} ({devices[speaker_id]['name']}) has no output channels")
 
     return len(errors) == 0, errors
 

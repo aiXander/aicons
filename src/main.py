@@ -53,9 +53,10 @@ class AgentApp:
             "Agent ID": f"{config.agent_id[:24]}...",
             "Microphone": f"Device {config.devices.mic_id}",
             "Virtual Cable": f"Device {config.devices.cable_id}",
-            "Speakers": f"Device {config.devices.speaker_id}",
             "Sample Rate": f"{config.audio.sample_rate} Hz",
         }
+        if config.monitor.enabled:
+            config_info["Speakers"] = f"Device {config.devices.speaker_id}"
 
         # Create UI callbacks
         callbacks = UICallbacks(
@@ -70,6 +71,7 @@ class AgentApp:
             window_title=config.ui.window_title,
             config_info=config_info,
             callbacks=callbacks,
+            monitor_enabled=config.monitor.enabled,
         )
 
         # Setup logging to debug panel
@@ -106,20 +108,23 @@ class AgentApp:
             self.ui.update_status("CONNECTING", "connecting")
             self.logger.info("Starting conversation session...")
 
-            # Create monitor loop and start it FIRST
+            # Create monitor loop and start it FIRST (if enabled)
             # Starting the monitor before the audio interface avoids macOS CoreAudio
             # error -10863 (race condition when opening streams on same device)
-            self.monitor = AudioMonitor(
-                input_device_id=self.config.devices.cable_id,
-                output_device_id=self.config.devices.speaker_id,
-                sample_rate=self.config.audio.sample_rate,
-                channels=self.config.audio.output_channels,
-                dtype=self.config.audio.dtype,
-                buffer_size=self.config.audio.buffer_size,
-                verbose=self.config.debug.verbose_audio,
-            )
-            self.monitor.start()
-            self.logger.debug("Monitor started")
+            if self.config.monitor.enabled:
+                self.monitor = AudioMonitor(
+                    input_device_id=self.config.devices.cable_id,
+                    output_device_id=self.config.devices.speaker_id,
+                    sample_rate=self.config.audio.sample_rate,
+                    channels=self.config.audio.output_channels,
+                    dtype=self.config.audio.dtype,
+                    buffer_size=self.config.audio.buffer_size,
+                    verbose=self.config.debug.verbose_audio,
+                )
+                self.monitor.start()
+                self.logger.debug("Monitor started - audio routed to speakers")
+            else:
+                self.logger.info("Monitor disabled - audio available on virtual cable for external apps")
 
             # Create audio interface
             self.audio_interface = VirtualCableInterface(
@@ -258,11 +263,12 @@ def main() -> None:
         print("\nRun 'python -m src.device_manager' to find your device IDs")
         sys.exit(1)
 
-    # Validate audio devices
+    # Validate audio devices (speaker_id is only needed if monitor is enabled)
+    speaker_id = config.devices.speaker_id if config.monitor.enabled else None
     devices_valid, device_errors = validate_devices(
         config.devices.mic_id,
         config.devices.cable_id,
-        config.devices.speaker_id,
+        speaker_id,
     )
     if not devices_valid:
         print("\n[Device Error] Invalid device configuration:")

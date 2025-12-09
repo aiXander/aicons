@@ -207,6 +207,21 @@ ui:
   window_height: 300
 ```
 
+#### Monitor Settings
+```yaml
+monitor:
+  enabled: true    # Enable/disable the monitor loop
+```
+
+**Monitor Modes:**
+- **`enabled: true`** (default): Audio is routed from virtual cable → speakers. You will hear the agent's voice through your speakers. Useful for testing and verification.
+- **`enabled: false`**: Monitor loop is disabled. Audio is only sent to the virtual cable, making it available for external applications like Unreal Engine. You will NOT hear audio through speakers.
+
+When monitor is disabled:
+- The `speaker_id` device configuration becomes optional
+- The UI will show "Audio → Virtual Cable" indicator
+- External apps can read from the virtual cable (e.g., BlackHole, VB-Cable)
+
 #### Debug Settings
 ```yaml
 debug:
@@ -316,13 +331,44 @@ If audio is only playing in one ear or sounds distorted:
 2. Most virtual cables are stereo (`output_channels: 2`)
 3. The app automatically converts mono ElevenLabs audio to stereo
 
-## Production Deployment
+## Production Deployment / Unreal Engine Integration
 
-When moving to production (e.g., Unreal Engine integration):
+When deploying with external applications like Unreal Engine:
 
-1. Remove or don't start the monitor loop
-2. Configure the target application to read from the virtual cable
-3. Audio flows: Mic → ElevenLabs → Virtual Cable → Target Application
+### Step 1: Disable the Monitor Loop
+
+Edit `config.yaml` and set:
+```yaml
+monitor:
+  enabled: false
+```
+
+This stops the audio from being routed to speakers and makes the virtual cable exclusively available to external apps.
+
+### Step 2: Configure Your External Application
+
+In Unreal Engine (or other applications):
+1. Open audio input settings
+2. Select your virtual cable as the audio input device:
+   - **macOS**: "BlackHole 2ch"
+   - **Windows**: "CABLE Output (VB-Audio Virtual Cable)"
+   - **Linux**: "VirtualCable"
+
+### Audio Flow
+```
+Microphone → ElevenLabs API → Virtual Cable → Unreal Engine (MetaHuman Lipsync)
+```
+
+### UI Indicators
+
+When monitor is disabled, the UI will display:
+- **"Audio → Virtual Cable"** indicator (purple) in the header
+- This confirms audio is NOT being sent to speakers
+- Audio is available on the virtual cable for external apps
+
+When monitor is enabled:
+- **"Audio → Speakers"** indicator (green) in the header
+- You will hear audio through your speakers for verification
 
 ## License
 

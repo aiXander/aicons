@@ -45,6 +45,13 @@ ui:
   window_width: 400
   window_height: 300
 
+# Monitor Settings
+# Controls whether agent audio is passed through to speakers for verification
+monitor:
+  # Enable/disable the monitor loop (virtual cable → speakers)
+  # Set to false when using the virtual cable as input for external apps (e.g., Unreal Engine)
+  enabled: false
+
 # Debug Settings
 debug:
   # Print audio stream status messages

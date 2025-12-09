@@ -73,7 +73,7 @@ AICONS/
 ### Configuration Files
 
 - **`.env`**: Contains `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID`
-- **`config.yaml`**: Device IDs (mic, cable, speaker), audio settings (sample_rate: 16000, channels: 1, output_channels: 2, dtype: int16, buffer_size: 1024), UI settings, debug flags
+- **`config.yaml`**: Device IDs (mic, cable, speaker), audio settings (sample_rate: 16000, channels: 1, output_channels: 2, dtype: int16, buffer_size: 1024), UI settings, monitor settings (enabled: true/false), debug flags
 
 ### Audio Flow
 
@@ -86,7 +86,8 @@ Input audio uses PCM int16 at 16kHz mono. Output converts to stereo when `output
 - **Queue-based Output**: Non-blocking audio output using `queue.Queue` to prevent blocking on device writes.
 - **Pause Implementation**: Sends silence instead of mic audio while keeping the ElevenLabs connection active.
 - **Stream Readiness**: `wait_until_ready()` method on audio interface coordinates startup timing between components.
-- **Monitor Startup Order**: Monitor is started BEFORE audio interface to avoid macOS CoreAudio race conditions.
+- **Monitor Startup Order**: Monitor is started BEFORE audio interface to avoid macOS CoreAudio race conditions (when monitor is enabled).
+- **Monitor Toggle**: The monitor loop can be disabled via `config.yaml` (`monitor.enabled: false`) to make the virtual cable available for external applications like Unreal Engine. When disabled, speaker_id becomes optional and the UI shows "Audio → Virtual Cable" indicator.
 - **Logging Integration**: Custom `TextHandler` pipes Python logging to the debug panel with level-based color coding.
 - **Focus Handling**: Platform-specific focus handling for macOS to ensure proper click-through behavior.
 
