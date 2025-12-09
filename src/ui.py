@@ -157,19 +157,51 @@ class AgentUI:
         self.root.lift()
         self.root.focus_force()
 
-        # On macOS, additional handling to ensure clicks register
+        # Bind activation events to ensure focus on all platforms
+        self.root.bind('<Activate>', self._on_activate)
+        self.root.bind('<FocusIn>', self._on_focus_in)
+
+        # On macOS, use additional techniques to ensure click-through works
         if sys.platform == 'darwin':
-            # Bind activation events to ensure focus
-            self.root.bind('<Activate>', self._on_activate)
-            self.root.bind('<FocusIn>', self._on_focus_in)
+            # Bind to map event (window becomes visible/deiconified)
+            self.root.bind('<Map>', self._on_map)
+            # Bind Configure to detect fullscreen state changes
+            self.root.bind('<Configure>', self._on_configure)
+            # Any click anywhere on the window should ensure focus
+            self.root.bind('<Button-1>', self._on_root_click, add='+')
 
     def _on_activate(self, event=None) -> None:
         """Handle window activation."""
         self.root.focus_force()
+        self.root.update_idletasks()
 
     def _on_focus_in(self, event=None) -> None:
         """Handle focus in events."""
-        pass  # Window already has focus
+        pass  # Window has focus, no action needed
+
+    def _on_map(self, event=None) -> None:
+        """Handle window map event (becomes visible)."""
+        self.root.lift()
+        self.root.focus_force()
+
+    def _on_configure(self, event=None) -> None:
+        """Handle window configuration changes (including fullscreen transitions)."""
+        # On macOS fullscreen, re-assert focus after any configuration change
+        if sys.platform == 'darwin' and event and event.widget == self.root:
+            self.root.after_idle(self._ensure_focus)
+
+    def _on_root_click(self, event=None) -> None:
+        """Handle any click on the root window to ensure focus."""
+        # This ensures the window is focused before any child widget processes the click
+        self.root.focus_force()
+
+    def _ensure_focus(self) -> None:
+        """Ensure the window has focus."""
+        try:
+            if self.root.winfo_exists():
+                self.root.focus_force()
+        except tk.TclError:
+            pass
 
     def _create_styled_button(
         self,
@@ -194,6 +226,7 @@ class AgentUI:
             parent,
             bg=bg,
             cursor="hand2",
+            takefocus=True,  # Allow focus for keyboard navigation
         )
 
         # Label inside for text
@@ -214,10 +247,7 @@ class AgentUI:
         btn_frame._hover_bg = hover_bg
         btn_frame._fg = fg
         btn_frame._command = command
-
-        # Bind click events to both frame and label
-        def on_click(event=None):
-            command()
+        btn_frame._pressed = False  # Track if button is being pressed
 
         def on_enter(event=None):
             btn_frame.configure(bg=hover_bg)
@@ -227,16 +257,24 @@ class AgentUI:
             current_bg = btn_frame._bg
             btn_frame.configure(bg=current_bg)
             btn_label.configure(bg=current_bg)
+            btn_frame._pressed = False  # Reset pressed state on leave
 
         def on_press(event=None):
-            # Darken slightly on press
+            # Mark as pressed and update visual immediately
+            btn_frame._pressed = True
             btn_frame.configure(bg=hover_bg)
             btn_label.configure(bg=hover_bg)
+            # Force immediate visual update
+            btn_frame.update_idletasks()
+            # Execute command synchronously for immediate response
+            command()
+            return "break"  # Prevent event propagation
 
         def on_release(event=None):
+            # Reset visual state
             btn_frame.configure(bg=btn_frame._bg)
             btn_label.configure(bg=btn_frame._bg)
-            command()
+            btn_frame._pressed = False
 
         # Bind events to both frame and label
         for widget in (btn_frame, btn_label):
@@ -732,14 +770,11 @@ class AgentUI:
         self.debug_log.tag_configure("ERROR", foreground=Theme.ACCENT_RED)
 
     def _handle_toggle_conversation(self) -> None:
-        """Handle toggle conversation button click with focus fix."""
-        # Ensure window has focus before processing
-        self.root.focus_force()
+        """Handle toggle conversation button click."""
         self.callbacks.on_toggle_conversation()
 
     def _handle_toggle_pause(self) -> None:
-        """Handle toggle pause button click with focus fix."""
-        self.root.focus_force()
+        """Handle toggle pause button click."""
         self.callbacks.on_toggle_pause()
 
     def _handle_close(self) -> None:
