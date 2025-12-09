@@ -182,10 +182,12 @@ The application features a modern dark purple theme with two main panels:
 #### Devices
 ```yaml
 devices:
-  mic_id: null      # Microphone input device ID
-  cable_id: null    # Virtual cable output device ID
-  speaker_id: null  # Speaker output device ID for monitoring
+  mic_id: null      # Microphone input device ID (required)
+  cable_id: null    # Virtual cable output device ID (required)
+  speaker_id: null  # Speaker output device ID (required only if monitor.enabled: true)
 ```
+
+**Note**: When `monitor.enabled: false`, the `speaker_id` is not required and can be omitted or left as `null`.
 
 #### Audio Settings
 ```yaml
