@@ -163,12 +163,6 @@ class AgentUI:
             self.root.bind('<Activate>', self._on_activate)
             self.root.bind('<FocusIn>', self._on_focus_in)
 
-            # Ensure the window takes focus when clicked anywhere
-            self.root.bind('<Button-1>', self._on_click, add='+')
-
-        # For all platforms - ensure main container can receive focus
-        self.root.bind('<Enter>', lambda e: self.root.focus_set())
-
     def _on_activate(self, event=None) -> None:
         """Handle window activation."""
         self.root.focus_force()
@@ -177,11 +171,102 @@ class AgentUI:
         """Handle focus in events."""
         pass  # Window already has focus
 
-    def _on_click(self, event=None) -> None:
-        """Handle click events to ensure focus."""
-        # Focus the window if it doesn't have focus
-        if self.root.focus_get() is None:
-            self.root.focus_force()
+    def _create_styled_button(
+        self,
+        parent: tk.Frame,
+        text: str,
+        command: Callable,
+        bg: str,
+        hover_bg: str,
+        fg: str = "#ffffff",
+        font: tuple = ("SF Pro Display", 16, "bold"),
+        pady: int = 20,
+        padx: int = 20,
+    ) -> tk.Frame:
+        """
+        Create a custom styled button using Frame+Label for consistent cross-platform appearance.
+
+        On macOS, tk.Button ignores background color. This creates a Frame-based button
+        that renders correctly on all platforms.
+        """
+        # Outer frame acts as the button
+        btn_frame = tk.Frame(
+            parent,
+            bg=bg,
+            cursor="hand2",
+        )
+
+        # Label inside for text
+        btn_label = tk.Label(
+            btn_frame,
+            text=text,
+            font=font,
+            bg=bg,
+            fg=fg,
+            pady=pady,
+            padx=padx,
+        )
+        btn_label.pack(fill=tk.BOTH, expand=True)
+
+        # Store references for later updates
+        btn_frame._label = btn_label
+        btn_frame._bg = bg
+        btn_frame._hover_bg = hover_bg
+        btn_frame._fg = fg
+        btn_frame._command = command
+
+        # Bind click events to both frame and label
+        def on_click(event=None):
+            command()
+
+        def on_enter(event=None):
+            btn_frame.configure(bg=hover_bg)
+            btn_label.configure(bg=hover_bg)
+
+        def on_leave(event=None):
+            current_bg = btn_frame._bg
+            btn_frame.configure(bg=current_bg)
+            btn_label.configure(bg=current_bg)
+
+        def on_press(event=None):
+            # Darken slightly on press
+            btn_frame.configure(bg=hover_bg)
+            btn_label.configure(bg=hover_bg)
+
+        def on_release(event=None):
+            btn_frame.configure(bg=btn_frame._bg)
+            btn_label.configure(bg=btn_frame._bg)
+            command()
+
+        # Bind events to both frame and label
+        for widget in (btn_frame, btn_label):
+            widget.bind('<Enter>', on_enter)
+            widget.bind('<Leave>', on_leave)
+            widget.bind('<Button-1>', on_press)
+            widget.bind('<ButtonRelease-1>', on_release)
+
+        return btn_frame
+
+    def _update_styled_button(
+        self,
+        btn_frame: tk.Frame,
+        text: str = None,
+        bg: str = None,
+        hover_bg: str = None,
+        fg: str = None,
+    ) -> None:
+        """Update a styled button's appearance."""
+        if text is not None:
+            btn_frame._label.configure(text=text)
+        if bg is not None:
+            btn_frame._bg = bg
+            btn_frame.configure(bg=bg)
+            btn_frame._label.configure(bg=bg)
+        if hover_bg is not None:
+            btn_frame._hover_bg = hover_bg
+        if fg is not None:
+            btn_frame._fg = fg
+            btn_frame._label.configure(fg=fg)
 
     def _configure_theme(self) -> None:
         """Configure the dark purple theme for ttk widgets."""
@@ -348,43 +433,29 @@ class AgentUI:
         button_frame = tk.Frame(control_frame, bg=Theme.BG_SECONDARY)
         button_frame.pack(fill=tk.X, pady=(0, 24))
 
-        # Main toggle button (Start/Stop) - Modern rounded look
-        self.toggle_btn = tk.Button(
+        # Main toggle button (Start/Stop) - Modern styled button
+        self.toggle_btn = self._create_styled_button(
             button_frame,
             text="Start Conversation",
             command=self._handle_toggle_conversation,
-            font=("SF Pro Display", 16, "bold"),
             bg=Theme.ACCENT_GREEN,
+            hover_bg="#16a34a",
             fg="#ffffff",
-            activebackground="#16a34a",
-            activeforeground="#ffffff",
-            relief="flat",
+            font=("SF Pro Display", 16, "bold"),
             pady=20,
-            cursor="hand2",
-            borderwidth=0,
-            highlightthickness=0,
         )
         self.toggle_btn.pack(fill=tk.X, pady=(0, 12))
 
-        # Add hover effects
-        self._add_button_hover(self.toggle_btn, Theme.ACCENT_GREEN, "#16a34a")
-
-        # Pause button (only visible when running)
-        self.pause_btn = tk.Button(
+        # Pause button (only visible when running) - Modern styled button
+        self.pause_btn = self._create_styled_button(
             button_frame,
             text="⏸",
             command=self._handle_toggle_pause,
-            font=("SF Pro Display", 20),
             bg=Theme.ACCENT_BLUE,
+            hover_bg="#2563eb",
             fg="#ffffff",
-            activebackground="#2563eb",
-            activeforeground="#ffffff",
-            relief="flat",
+            font=("SF Pro Display", 20),
             pady=12,
-            width=4,
-            cursor="hand2",
-            borderwidth=0,
-            highlightthickness=0,
         )
         # Initially hidden
 
@@ -416,41 +487,17 @@ class AgentUI:
         tk.Frame(control_frame, bg=Theme.BG_SECONDARY).pack(fill=tk.BOTH, expand=True)
 
         # Show Debug Log button (only visible when debug panel is hidden)
-        self.show_debug_btn = tk.Button(
+        self.show_debug_btn = self._create_styled_button(
             control_frame,
             text="Show Debug Log",
             command=self._toggle_debug_panel,
-            font=("SF Pro Display", 12),
             bg=Theme.BUTTON_BG,
+            hover_bg=Theme.BUTTON_HOVER,
             fg=Theme.TEXT_SECONDARY,
-            activebackground=Theme.BUTTON_HOVER,
-            activeforeground=Theme.TEXT_PRIMARY,
-            relief="flat",
+            font=("SF Pro Display", 12),
             pady=10,
-            cursor="hand2",
-            borderwidth=0,
-            highlightthickness=0,
         )
-        self._add_button_hover(self.show_debug_btn, Theme.BUTTON_BG, Theme.BUTTON_HOVER)
         # Initially hidden
-
-    def _add_button_hover(self, button: tk.Button, normal_bg: str, hover_bg: str) -> None:
-        """Add hover effect to a button."""
-        def on_enter(e):
-            button.configure(bg=hover_bg)
-
-        def on_leave(e):
-            # Check current state to determine correct background
-            if button == self.toggle_btn:
-                if self.conversation_running:
-                    button.configure(bg=Theme.ACCENT_RED)
-                else:
-                    button.configure(bg=Theme.ACCENT_GREEN)
-            else:
-                button.configure(bg=normal_bg)
-
-        button.bind('<Enter>', on_enter)
-        button.bind('<Leave>', on_leave)
 
     def _create_info_row(self, parent: tk.Frame, label: str, value: str) -> None:
         """Create an info row with label and value."""
@@ -514,25 +561,19 @@ class AgentUI:
             fg=Theme.TEXT_PRIMARY,
         ).pack(side=tk.LEFT)
 
-        # Clear button - modern pill style
-        clear_btn = tk.Button(
+        # Clear button - modern styled button
+        clear_btn = self._create_styled_button(
             header,
             text="Clear",
             command=self._clear_conversation_log,
-            font=("SF Pro Display", 11),
             bg=Theme.BUTTON_BG,
+            hover_bg=Theme.BUTTON_HOVER,
             fg=Theme.TEXT_SECONDARY,
-            activebackground=Theme.BUTTON_HOVER,
-            activeforeground=Theme.TEXT_PRIMARY,
-            relief="flat",
-            padx=16,
+            font=("SF Pro Display", 11),
             pady=6,
-            cursor="hand2",
-            borderwidth=0,
-            highlightthickness=0,
+            padx=16,
         )
         clear_btn.pack(side=tk.RIGHT)
-        self._add_button_hover(clear_btn, Theme.BUTTON_BG, Theme.BUTTON_HOVER)
 
         # Conversation text area with border
         text_outer = tk.Frame(conv_frame, bg=Theme.BORDER, padx=1, pady=1)
@@ -618,40 +659,30 @@ class AgentUI:
         ).pack(side=tk.LEFT)
 
         # Hide button
-        self.debug_toggle_btn = tk.Button(
+        self.debug_toggle_btn = self._create_styled_button(
             header,
             text="Hide",
             command=self._toggle_debug_panel,
-            font=("SF Pro Display", 11),
             bg=Theme.BUTTON_BG,
+            hover_bg=Theme.BUTTON_HOVER,
             fg=Theme.TEXT_SECONDARY,
-            activebackground=Theme.BUTTON_HOVER,
-            activeforeground=Theme.TEXT_PRIMARY,
-            relief="flat",
-            padx=16,
+            font=("SF Pro Display", 11),
             pady=6,
-            cursor="hand2",
-            borderwidth=0,
-            highlightthickness=0,
+            padx=16,
         )
         self.debug_toggle_btn.pack(side=tk.RIGHT, padx=(8, 0))
 
         # Clear button
-        clear_btn = tk.Button(
+        clear_btn = self._create_styled_button(
             header,
             text="Clear",
             command=self._clear_debug_log,
-            font=("SF Pro Display", 11),
             bg=Theme.BUTTON_BG,
+            hover_bg=Theme.BUTTON_HOVER,
             fg=Theme.TEXT_SECONDARY,
-            activebackground=Theme.BUTTON_HOVER,
-            activeforeground=Theme.TEXT_PRIMARY,
-            relief="flat",
-            padx=16,
+            font=("SF Pro Display", 11),
             pady=6,
-            cursor="hand2",
-            borderwidth=0,
-            highlightthickness=0,
+            padx=16,
         )
         clear_btn.pack(side=tk.RIGHT)
 
@@ -799,29 +830,29 @@ class AgentUI:
         self.conversation_running = running
 
         if running:
-            self.toggle_btn.config(
+            self._update_styled_button(
+                self.toggle_btn,
                 text="Stop Conversation",
                 bg=Theme.ACCENT_RED,
-                activebackground="#dc2626"
+                hover_bg="#dc2626"
             )
             self.pause_btn.pack(fill=tk.X, pady=(0, 12))
-            self._add_button_hover(self.toggle_btn, Theme.ACCENT_RED, "#dc2626")
         else:
-            self.toggle_btn.config(
+            self._update_styled_button(
+                self.toggle_btn,
                 text="Start Conversation",
                 bg=Theme.ACCENT_GREEN,
-                activebackground="#16a34a"
+                hover_bg="#16a34a"
             )
             self.pause_btn.pack_forget()
-            self.pause_btn.config(text="⏸")
-            self._add_button_hover(self.toggle_btn, Theme.ACCENT_GREEN, "#16a34a")
+            self._update_styled_button(self.pause_btn, text="⏸")
 
     def set_paused(self, paused: bool) -> None:
         """Update pause button state."""
         if paused:
-            self.pause_btn.config(text="▶")
+            self._update_styled_button(self.pause_btn, text="▶")
         else:
-            self.pause_btn.config(text="⏸")
+            self._update_styled_button(self.pause_btn, text="⏸")
 
     def show_error(self, title: str, message: str) -> None:
         """Show an error dialog."""
