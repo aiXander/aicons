@@ -1,0 +1,37 @@
+# Loopback MVP Configuration
+# Run `python -m src.device_manager` to find your device IDs
+
+# Audio Device IDs
+# These must be set after running device_manager.py to identify your devices
+devices:
+  # Microphone input (e.g., MacBook Pro Microphone)
+  mic_id: null
+  # Virtual cable output (e.g., BlackHole 2ch)
+  cable_id: null
+  # Speaker output for monitoring (e.g., MacBook Pro Speakers)
+  speaker_id: null
+
+# Audio Settings
+audio:
+  # Sample rate in Hz (ElevenLabs standard is 16000)
+  sample_rate: 16000
+  # Number of audio channels (1 = mono)
+  channels: 1
+  # Audio data type
+  dtype: int16
+  # Buffer size for audio streams (frames per buffer)
+  # Lower = less latency but more CPU, Higher = more latency but stable
+  buffer_size: 1024
+
+# UI Settings
+ui:
+  window_title: "ElevenLabs Agent Controller"
+  window_width: 400
+  window_height: 300
+
+# Debug Settings
+debug:
+  # Print audio stream status messages
+  verbose_audio: false
+  # Print conversation transcripts to console
+  print_transcripts: true

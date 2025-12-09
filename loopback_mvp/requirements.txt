@@ -1,0 +1,13 @@
+# ElevenLabs SDK
+elevenlabs>=1.0.0
+
+# Audio processing
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# Configuration
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# UI (included with Python on macOS, but listed for completeness)
+# tkinter is part of Python standard library
