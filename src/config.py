@@ -29,6 +29,7 @@ class AudioConfig:
 
     sample_rate: int
     channels: int
+    output_channels: int
     dtype: str
     buffer_size: int
 
@@ -159,6 +160,7 @@ def load_config(
     audio = AudioConfig(
         sample_rate=audio_yaml.get("sample_rate", 16000),
         channels=audio_yaml.get("channels", 1),
+        output_channels=audio_yaml.get("output_channels", 2),
         dtype=audio_yaml.get("dtype", "int16"),
         buffer_size=audio_yaml.get("buffer_size", 1024),
     )
@@ -233,7 +235,8 @@ def print_config(config: AppConfig) -> None:
 
     print("\nAudio Settings:")
     print(f"  Sample Rate: {config.audio.sample_rate} Hz")
-    print(f"  Channels: {config.audio.channels}")
+    print(f"  Input Channels: {config.audio.channels}")
+    print(f"  Output Channels: {config.audio.output_channels}")
     print(f"  Data Type: {config.audio.dtype}")
     print(f"  Buffer Size: {config.audio.buffer_size}")
 

@@ -5,9 +5,9 @@
 # These must be set after running device_manager.py to identify your devices
 devices:
   # Microphone input (e.g., MacBook Pro Microphone)
-  mic_id: 0
+  mic_id: 1
   # Virtual cable output (e.g., BlackHole 2ch)
-  cable_id: 1
+  cable_id: 0
   # Speaker output for monitoring (e.g., MacBook Pro Speakers)
   speaker_id: 2
 
@@ -15,8 +15,10 @@ devices:
 audio:
   # Sample rate in Hz (ElevenLabs standard is 16000)
   sample_rate: 16000
-  # Number of audio channels (1 = mono)
+  # Number of audio channels for input (1 = mono for ElevenLabs)
   channels: 1
+  # Number of channels for output devices (2 for BlackHole 2ch and speakers)
+  output_channels: 2
   # Audio data type
   dtype: int16
   # Buffer size for audio streams (frames per buffer)

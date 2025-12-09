@@ -31,7 +31,7 @@ class AudioMonitor:
         input_device_id: int,
         output_device_id: int,
         sample_rate: int = 16000,
-        channels: int = 1,
+        channels: int = 2,
         dtype: str = "int16",
         buffer_size: int = 1024,
         verbose: bool = False,
@@ -43,7 +43,7 @@ class AudioMonitor:
             input_device_id: Device ID for virtual cable input (BlackHole)
             output_device_id: Device ID for speaker output
             sample_rate: Audio sample rate (must match agent output)
-            channels: Number of audio channels
+            channels: Number of audio channels (2 for BlackHole and speakers)
             dtype: Audio data type
             buffer_size: Frames per buffer
             verbose: Print status messages
@@ -59,6 +59,8 @@ class AudioMonitor:
         self._running = False
         self._stream: Optional[sd.Stream] = None
         self._lock = threading.Lock()
+        self._underflow_count = 0
+        self._max_underflow_warnings = 3  # Only show first few warnings
 
     @property
     def is_running(self) -> bool:
@@ -78,7 +80,15 @@ class AudioMonitor:
             status: Stream status
         """
         if status and self.verbose:
-            print(f"[Monitor] Status: {status}")
+            # Suppress repeated underflow warnings (normal for virtual cables during silence)
+            if "underflow" in str(status).lower():
+                self._underflow_count += 1
+                if self._underflow_count <= self._max_underflow_warnings:
+                    print(f"[Monitor] Status: {status} (warning {self._underflow_count}/{self._max_underflow_warnings})")
+                elif self._underflow_count == self._max_underflow_warnings + 1:
+                    print("[Monitor] Suppressing further underflow warnings (normal for virtual cables)")
+            else:
+                print(f"[Monitor] Status: {status}")
 
         # Direct pass-through: what comes in goes out
         outdata[:] = indata

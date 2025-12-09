@@ -7,7 +7,6 @@ conversational AI agent with virtual cable audio routing.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from threading import Thread
 import sys
 from typing import Optional
 
@@ -51,7 +50,6 @@ class AgentApp:
         self.conversation: Optional[Conversation] = None
         self.audio_interface: Optional[VirtualCableInterface] = None
         self.monitor: Optional[AudioMonitor] = None
-        self.session_thread: Optional[Thread] = None
 
         # Build UI
         self._build_ui()
@@ -148,17 +146,19 @@ class AgentApp:
                 output_device_id=self.config.devices.cable_id,
                 sample_rate=self.config.audio.sample_rate,
                 channels=self.config.audio.channels,
+                output_channels=self.config.audio.output_channels,
                 dtype=self.config.audio.dtype,
                 buffer_size=self.config.audio.buffer_size,
                 verbose=self.config.debug.verbose_audio,
             )
 
             # Create and start monitor loop
+            # Monitor uses output_channels since both BlackHole and speakers are stereo
             self.monitor = AudioMonitor(
                 input_device_id=self.config.devices.cable_id,
                 output_device_id=self.config.devices.speaker_id,
                 sample_rate=self.config.audio.sample_rate,
-                channels=self.config.audio.channels,
+                channels=self.config.audio.output_channels,
                 dtype=self.config.audio.dtype,
                 buffer_size=self.config.audio.buffer_size,
                 verbose=self.config.debug.verbose_audio,
@@ -174,10 +174,6 @@ class AgentApp:
                 if self.config.debug.print_transcripts:
                     print(f"[User] {transcript}")
 
-            def on_error(error: str) -> None:
-                print(f"[Error] {error}")
-                self.root.after(0, lambda: self._handle_error(error))
-
             # Create conversation
             self.conversation = Conversation(
                 client=self.client,
@@ -186,21 +182,10 @@ class AgentApp:
                 audio_interface=self.audio_interface,
                 callback_agent_response=on_agent_response,
                 callback_user_transcript=on_user_transcript,
-                callback_error=on_error,
             )
 
-            # Start session in background thread
-            def run_session():
-                try:
-                    self.conversation.start_session()
-                except Exception as e:
-                    print(f"[Session Error] {e}")
-                finally:
-                    # Clean up when session ends
-                    self.root.after(0, self._on_session_end)
-
-            self.session_thread = Thread(target=run_session, daemon=True)
-            self.session_thread.start()
+            # Start session (runs in background, non-blocking)
+            self.conversation.start_session()
 
             # Update UI
             self._update_status("LIVE", "green")
