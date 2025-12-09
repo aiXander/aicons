@@ -5,11 +5,11 @@
 # These must be set after running device_manager.py to identify your devices
 devices:
   # Microphone input (e.g., MacBook Pro Microphone)
-  mic_id: null
+  mic_id: 0
   # Virtual cable output (e.g., BlackHole 2ch)
-  cable_id: null
+  cable_id: 1
   # Speaker output for monitoring (e.g., MacBook Pro Speakers)
-  speaker_id: null
+  speaker_id: 2
 
 # Audio Settings
 audio:
@@ -32,6 +32,6 @@ ui:
 # Debug Settings
 debug:
   # Print audio stream status messages
-  verbose_audio: false
+  verbose_audio: true
   # Print conversation transcripts to console
   print_transcripts: true
