@@ -137,11 +137,26 @@ python -m src.main
 
 ## Usage
 
+### UI Layout
+
+The application features a modern dark purple theme with two main panels:
+
+- **Left Panel (Controls)**:
+  - Profile image display
+  - Start/Stop Conversation button
+  - Pause button (visible when conversation is active)
+  - Show/Hide Debug Log toggle
+
+- **Right Panel (Logs)**:
+  - **Conversation Log** (top): Timestamped messages with color-coded roles (user/agent)
+  - **Debug Log** (bottom, collapsible): System logs with level-based color coding
+
 ### UI Controls
 
 - **Start Conversation**: Connects to ElevenLabs and begins the audio session
 - **Pause Audio**: Mutes the microphone (sends silence) without disconnecting
 - **Stop Conversation**: Ends the session and resets everything
+- **Show/Hide Debug**: Toggle the debug log panel visibility
 
 ### Status Indicators
 
@@ -149,6 +164,7 @@ python -m src.main
 - **CONNECTING** (Orange): Establishing connection to ElevenLabs
 - **LIVE** (Green): Active conversation in progress
 - **PAUSED** (Blue): Audio muted but session still active
+- **STOPPING** (Orange): Session ending
 - **STOPPED** (Red): Session ended
 - **ERROR** (Red): An error occurred
 
@@ -208,13 +224,16 @@ AICONS/
 ├── requirements.txt      # Python dependencies
 ├── README.md             # This file
 ├── CLAUDE.md             # Developer guidance for Claude AI
+├── assets/
+│   └── img.jpeg          # Profile image for UI
 └── src/
     ├── __init__.py
-    ├── config.py         # Configuration loader
+    ├── main.py           # Application entry point & business logic
+    ├── ui.py             # Tkinter UI components (dark purple theme)
+    ├── config.py         # Configuration loader & validation
     ├── device_manager.py # Audio device discovery
     ├── audio_interface.py # ElevenLabs audio handler
-    ├── monitor_loop.py   # Virtual cable → speakers
-    └── main.py           # UI and orchestration
+    └── monitor_loop.py   # Virtual cable → speakers
 ```
 
 ## Architecture
@@ -236,11 +255,12 @@ AICONS/
 
 ### Component Responsibilities
 
+- **`main.py`**: Application entry point and business logic orchestration
+- **`ui.py`**: Complete Tkinter UI with dark purple theme, conversation/debug logs, and status indicators
+- **`config.py`**: Loads and validates configuration with three-stage validation
 - **`device_manager.py`**: Cross-platform audio device discovery and identification
 - **`audio_interface.py`**: Custom ElevenLabs `AudioInterface` for device routing with mono-to-stereo conversion
 - **`monitor_loop.py`**: Pass-through from virtual cable to speakers
-- **`config.py`**: Loads and validates configuration
-- **`main.py`**: Tkinter UI and session orchestration
 
 ## Troubleshooting
 
