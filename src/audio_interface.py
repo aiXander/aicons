@@ -67,6 +67,7 @@ class VirtualCableInterface(AudioInterface):
         self._output_queue: queue.Queue = queue.Queue()
         self._should_stop = threading.Event()
         self._output_thread: Optional[threading.Thread] = None
+        self._streams_ready = threading.Event()
 
     @property
     def paused(self) -> bool:
@@ -87,6 +88,22 @@ class VirtualCableInterface(AudioInterface):
                 if self.verbose:
                     print(f"[Audio Output Thread] Error: {e}")
 
+    def wait_until_ready(self, timeout: float = 2.0) -> bool:
+        """
+        Wait until audio streams are ready.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if streams are ready, False if timeout occurred
+        """
+        return self._streams_ready.wait(timeout=timeout)
+
+    def is_ready(self) -> bool:
+        """Check if audio streams are ready."""
+        return self._streams_ready.is_set()
+
     def start(self, input_callback: Callable[[bytes], None]) -> None:
         """
         Start the audio streams.
@@ -96,6 +113,7 @@ class VirtualCableInterface(AudioInterface):
         """
         self._input_callback = input_callback
         self._should_stop.clear()
+        self._streams_ready.clear()
 
         def sd_input_callback(indata, frames, time_info, status):
             """Callback for input stream - sends mic audio to ElevenLabs."""
@@ -131,16 +149,16 @@ class VirtualCableInterface(AudioInterface):
             dtype=self.dtype,
         )
 
-        # Start streams with small delay between them to avoid macOS CoreAudio errors
-        # The error -10863 (kAudioUnitErr_CannotDoInCurrentContext) happens when
-        # starting multiple streams too quickly on macOS
+        # Start streams - input first, then output
         self._stream_in.start()
-        time.sleep(0.1)  # Small delay to let CoreAudio stabilize
         self._stream_out.start()
 
         # Start output thread for blocking writes
         self._output_thread = threading.Thread(target=self._output_thread_func)
         self._output_thread.start()
+
+        # Signal that streams are ready
+        self._streams_ready.set()
 
         if self.verbose:
             print(f"[Audio Interface] Started - Input: {self.input_device_id}, Output: {self.output_device_id}")

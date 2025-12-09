@@ -11,3 +11,6 @@ PyYAML>=6.0
 
 # UI (included with Python on macOS, but listed for completeness)
 # tkinter is part of Python standard library
+
+# Image processing
+Pillow>=10.0.0

@@ -9,9 +9,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sys
 import logging
+import os
 from typing import Optional, Callable, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass
+from PIL import Image, ImageTk
 
 
 # Modern dark theme with subtle purple hue
@@ -102,7 +104,6 @@ class AgentUI:
         """
         self.root = root
         self.callbacks = callbacks
-        self.config_info = config_info
 
         # Track debug panel visibility
         self.debug_visible = True
@@ -385,8 +386,9 @@ class AgentUI:
         content_frame.pack(fill=tk.BOTH, expand=True, pady=(24, 0))
 
         # Configure grid weights for responsive layout
-        content_frame.grid_columnconfigure(0, weight=1, minsize=380)
-        content_frame.grid_columnconfigure(1, weight=3, minsize=600)
+        # Left panel is 25% narrower (weight 0.75 vs 1, minsize 285 vs 380)
+        content_frame.grid_columnconfigure(0, weight=0, minsize=285)
+        content_frame.grid_columnconfigure(1, weight=1, minsize=600)
         content_frame.grid_rowconfigure(0, weight=1)
 
         # Left panel - Controls
@@ -444,6 +446,50 @@ class AgentUI:
         )
         self.status_label.pack(side=tk.LEFT)
 
+    def _load_profile_image(self, panel_width: int) -> Optional[ImageTk.PhotoImage]:
+        """
+        Load and prepare the profile image with center crop to square.
+
+        Args:
+            panel_width: Width of the panel to fit the image into
+
+        Returns:
+            ImageTk.PhotoImage or None if image not found
+        """
+        # Find the image path relative to this file
+        src_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(src_dir)
+        image_path = os.path.join(project_root, "assets", "img.jpeg")
+
+        if not os.path.exists(image_path):
+            return None
+
+        try:
+            # Load the image
+            img = Image.open(image_path)
+
+            # Center crop to square
+            width, height = img.size
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            right = left + min_dim
+            bottom = top + min_dim
+            img = img.crop((left, top, right, bottom))
+
+            # Calculate display size to fit panel width (with padding)
+            # Panel has 24px padding on each side, plus 1px border
+            available_width = panel_width - 50  # Leave some margin
+            display_size = min(available_width, 768)
+
+            # Resize to display size
+            img = img.resize((display_size, display_size), Image.Resampling.LANCZOS)
+
+            return ImageTk.PhotoImage(img)
+        except Exception as e:
+            logging.warning(f"Failed to load profile image: {e}")
+            return None
+
     def _build_control_panel(self, parent: tk.Frame) -> None:
         """Build the left control panel."""
         # Outer frame with border effect
@@ -457,6 +503,27 @@ class AgentUI:
 
         control_frame = tk.Frame(control_outer, bg=Theme.BG_SECONDARY, padx=24, pady=24)
         control_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Store reference to control_frame for image sizing
+        self.control_frame = control_frame
+
+        # Profile picture at the top (center cropped to square)
+        # Get panel width (minsize is 285, minus padding and border)
+        panel_width = 285
+        self.profile_image = self._load_profile_image(panel_width)
+
+        if self.profile_image:
+            # Create frame to center the image
+            profile_frame = tk.Frame(control_frame, bg=Theme.BG_SECONDARY)
+            profile_frame.pack(fill=tk.X, pady=(0, 24))
+
+            # Display the profile image, centered
+            profile_label = tk.Label(
+                profile_frame,
+                image=self.profile_image,
+                bg=Theme.BG_SECONDARY,
+            )
+            profile_label.pack(anchor=tk.CENTER)
 
         # Section title
         tk.Label(
@@ -497,30 +564,6 @@ class AgentUI:
         )
         # Initially hidden
 
-        # Separator line with purple accent
-        separator = tk.Frame(control_frame, bg=Theme.ACCENT_PURPLE_DIM, height=2)
-        separator.pack(fill=tk.X, pady=24)
-
-        # Info section title
-        tk.Label(
-            control_frame,
-            text="Configuration",
-            font=("SF Pro Display", 16, "bold"),
-            bg=Theme.BG_SECONDARY,
-            fg=Theme.TEXT_PRIMARY,
-        ).pack(anchor=tk.W, pady=(0, 16))
-
-        # Info card with border
-        info_outer = tk.Frame(control_frame, bg=Theme.BORDER, padx=1, pady=1)
-        info_outer.pack(fill=tk.X)
-
-        info_frame = tk.Frame(info_outer, bg=Theme.BG_INPUT, padx=16, pady=16)
-        info_frame.pack(fill=tk.X)
-
-        # Display config info
-        for label, value in self.config_info.items():
-            self._create_info_row(info_frame, label, value)
-
         # Spacer
         tk.Frame(control_frame, bg=Theme.BG_SECONDARY).pack(fill=tk.BOTH, expand=True)
 
@@ -536,30 +579,6 @@ class AgentUI:
             pady=10,
         )
         # Initially hidden
-
-    def _create_info_row(self, parent: tk.Frame, label: str, value: str) -> None:
-        """Create an info row with label and value."""
-        row = tk.Frame(parent, bg=Theme.BG_INPUT)
-        row.pack(fill=tk.X, pady=4)
-
-        tk.Label(
-            row,
-            text=label,
-            font=("SF Mono", 10),
-            bg=Theme.BG_INPUT,
-            fg=Theme.TEXT_MUTED,
-            width=14,
-            anchor=tk.W,
-        ).pack(side=tk.LEFT)
-
-        tk.Label(
-            row,
-            text=value,
-            font=("SF Mono", 10),
-            bg=Theme.BG_INPUT,
-            fg=Theme.TEXT_PRIMARY,
-            anchor=tk.W,
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _build_log_panel(self, parent: tk.Frame) -> None:
         """Build the right log panel with conversation and debug logs."""

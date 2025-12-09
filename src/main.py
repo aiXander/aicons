@@ -106,7 +106,22 @@ class AgentApp:
             self.ui.update_status("CONNECTING", "connecting")
             self.logger.info("Starting conversation session...")
 
-            # Create audio interface (but don't start yet)
+            # Create monitor loop and start it FIRST
+            # Starting the monitor before the audio interface avoids macOS CoreAudio
+            # error -10863 (race condition when opening streams on same device)
+            self.monitor = AudioMonitor(
+                input_device_id=self.config.devices.cable_id,
+                output_device_id=self.config.devices.speaker_id,
+                sample_rate=self.config.audio.sample_rate,
+                channels=self.config.audio.output_channels,
+                dtype=self.config.audio.dtype,
+                buffer_size=self.config.audio.buffer_size,
+                verbose=self.config.debug.verbose_audio,
+            )
+            self.monitor.start()
+            self.logger.debug("Monitor started")
+
+            # Create audio interface
             self.audio_interface = VirtualCableInterface(
                 input_device_id=self.config.devices.mic_id,
                 output_device_id=self.config.devices.cable_id,
@@ -118,18 +133,6 @@ class AgentApp:
                 verbose=self.config.debug.verbose_audio,
             )
             self.logger.debug("Audio interface created")
-
-            # Create monitor loop (but don't start yet - will be started after conversation)
-            self.monitor = AudioMonitor(
-                input_device_id=self.config.devices.cable_id,
-                output_device_id=self.config.devices.speaker_id,
-                sample_rate=self.config.audio.sample_rate,
-                channels=self.config.audio.output_channels,
-                dtype=self.config.audio.dtype,
-                buffer_size=self.config.audio.buffer_size,
-                verbose=self.config.debug.verbose_audio,
-            )
-            self.logger.debug("Monitor created")
 
             # Create conversation callbacks
             def on_agent_response(response: str) -> None:
@@ -156,14 +159,6 @@ class AgentApp:
             # Start session (runs in background, non-blocking)
             self.conversation.start_session()
             self.logger.info("Session started successfully")
-
-            # Small delay to let audio streams stabilize before starting monitor
-            # This helps avoid macOS CoreAudio context errors
-            time.sleep(0.3)
-
-            # Now start the monitor loop (after conversation's audio interface is running)
-            self.monitor.start()
-            self.logger.debug("Monitor loop started")
 
             # Update UI
             self.ui.update_status("LIVE", "live")
