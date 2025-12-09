@@ -11,6 +11,7 @@ from elevenlabs.conversational_ai.conversation import AudioInterface
 from typing import Callable, Optional
 import threading
 import queue
+import time
 
 
 class VirtualCableInterface(AudioInterface):
@@ -59,18 +60,32 @@ class VirtualCableInterface(AudioInterface):
         self._paused = False
         self._lock = threading.Lock()
         self._stream_in: Optional[sd.InputStream] = None
-        self._stream_out: Optional[sd.OutputStream] = None
+        self._stream_out: Optional[sd.RawOutputStream] = None
         self._input_callback: Optional[Callable] = None
 
-        # Audio output queue for non-blocking writes
+        # Audio output queue and thread (like DefaultAudioInterface)
         self._output_queue: queue.Queue = queue.Queue()
-        self._output_buffer: np.ndarray = np.array([], dtype=self.dtype)
+        self._should_stop = threading.Event()
+        self._output_thread: Optional[threading.Thread] = None
 
     @property
     def paused(self) -> bool:
         """Check if audio streams are paused."""
         with self._lock:
             return self._paused
+
+    def _output_thread_func(self) -> None:
+        """Thread function that writes audio from queue to output stream."""
+        while not self._should_stop.is_set():
+            try:
+                audio = self._output_queue.get(timeout=0.25)
+                if self._stream_out is not None:
+                    self._stream_out.write(audio)
+            except queue.Empty:
+                pass
+            except Exception as e:
+                if self.verbose:
+                    print(f"[Audio Output Thread] Error: {e}")
 
     def start(self, input_callback: Callable[[bytes], None]) -> None:
         """
@@ -80,6 +95,7 @@ class VirtualCableInterface(AudioInterface):
             input_callback: Function to call with captured audio data (bytes)
         """
         self._input_callback = input_callback
+        self._should_stop.clear()
 
         def sd_input_callback(indata, frames, time_info, status):
             """Callback for input stream - sends mic audio to ElevenLabs."""
@@ -106,64 +122,39 @@ class VirtualCableInterface(AudioInterface):
             callback=sd_input_callback,
         )
 
-        def sd_output_callback(outdata, frames, time_info, status):
-            """Callback for output stream - pulls audio from queue."""
-            if status and self.verbose:
-                # Only log non-underflow errors (underflow is normal during silence)
-                if "underflow" not in str(status).lower():
-                    print(f"[Audio Output] Status: {status}")
-
-            # Calculate how many samples we need (frames * channels)
-            samples_needed = frames * self.output_channels
-
-            # Collect audio from buffer
-            while len(self._output_buffer) < samples_needed:
-                try:
-                    chunk = self._output_queue.get_nowait()
-                    self._output_buffer = np.concatenate([self._output_buffer, chunk])
-                except queue.Empty:
-                    break
-
-            if len(self._output_buffer) >= samples_needed:
-                # We have enough data
-                outdata[:] = self._output_buffer[:samples_needed].reshape(-1, self.output_channels)
-                self._output_buffer = self._output_buffer[samples_needed:]
-            else:
-                # Not enough data, output silence for remaining
-                available = len(self._output_buffer)
-                if available > 0:
-                    # Partial fill
-                    samples_to_use = (available // self.output_channels) * self.output_channels
-                    if samples_to_use > 0:
-                        frames_available = samples_to_use // self.output_channels
-                        outdata[:frames_available] = self._output_buffer[:samples_to_use].reshape(-1, self.output_channels)
-                        outdata[frames_available:] = 0
-                        self._output_buffer = self._output_buffer[samples_to_use:]
-                    else:
-                        outdata[:] = 0
-                else:
-                    outdata[:] = 0
-
-        # Create output stream (ElevenLabs -> Virtual Cable) with callback
-        # Use output_channels for devices like BlackHole that require stereo
-        self._stream_out = sd.OutputStream(
+        # Create output stream (ElevenLabs -> Virtual Cable) using RawOutputStream
+        # for blocking writes (like DefaultAudioInterface pattern)
+        self._stream_out = sd.RawOutputStream(
             device=self.output_device_id,
             channels=self.output_channels,
             samplerate=self.sample_rate,
             dtype=self.dtype,
-            blocksize=self.buffer_size,
-            callback=sd_output_callback,
         )
 
-        # Start both streams
+        # Start streams with small delay between them to avoid macOS CoreAudio errors
+        # The error -10863 (kAudioUnitErr_CannotDoInCurrentContext) happens when
+        # starting multiple streams too quickly on macOS
         self._stream_in.start()
+        time.sleep(0.1)  # Small delay to let CoreAudio stabilize
         self._stream_out.start()
+
+        # Start output thread for blocking writes
+        self._output_thread = threading.Thread(target=self._output_thread_func)
+        self._output_thread.start()
 
         if self.verbose:
             print(f"[Audio Interface] Started - Input: {self.input_device_id}, Output: {self.output_device_id}")
 
     def stop(self) -> None:
         """Stop and close all audio streams."""
+        # Signal output thread to stop
+        self._should_stop.set()
+
+        # Wait for output thread to finish
+        if self._output_thread is not None:
+            self._output_thread.join(timeout=1.0)
+            self._output_thread = None
+
         if self._stream_in:
             self._stream_in.stop()
             self._stream_in.close()
@@ -174,13 +165,12 @@ class VirtualCableInterface(AudioInterface):
             self._stream_out.close()
             self._stream_out = None
 
-        # Clear the output queue and buffer
+        # Clear the output queue
         while not self._output_queue.empty():
             try:
                 self._output_queue.get_nowait()
             except queue.Empty:
                 break
-        self._output_buffer = np.array([], dtype=self.dtype)
 
         if self.verbose:
             print("[Audio Interface] Stopped")
@@ -196,21 +186,20 @@ class VirtualCableInterface(AudioInterface):
             if self._paused:
                 return
 
-        if self._stream_out and self._stream_out.active:
-            try:
+        try:
+            # Convert mono to stereo if output device requires more channels
+            if self.output_channels > self.channels:
                 # Convert bytes to numpy array (mono from ElevenLabs)
                 audio_np = np.frombuffer(audio, dtype=self.dtype)
+                # Duplicate mono channel to create stereo (interleaved)
+                audio_stereo = np.column_stack([audio_np] * self.output_channels).flatten()
+                audio = audio_stereo.tobytes()
 
-                # Convert mono to stereo if output device requires more channels
-                if self.output_channels > self.channels:
-                    # Duplicate mono channel to create stereo (interleaved)
-                    audio_np = np.column_stack([audio_np] * self.output_channels).flatten()
-
-                # Enqueue audio for callback to consume (non-blocking)
-                self._output_queue.put(audio_np)
-            except Exception as e:
-                if self.verbose:
-                    print(f"[Audio Output] Error: {e}")
+            # Enqueue audio bytes for output thread to write
+            self._output_queue.put(audio)
+        except Exception as e:
+            if self.verbose:
+                print(f"[Audio Output] Error: {e}")
 
     def interrupt(self) -> None:
         """
@@ -220,12 +209,11 @@ class VirtualCableInterface(AudioInterface):
         Clears pending audio so the agent response stops immediately.
         """
         # Clear pending audio from queue
-        while not self._output_queue.empty():
-            try:
+        try:
+            while True:
                 self._output_queue.get_nowait()
-            except queue.Empty:
-                break
-        self._output_buffer = np.array([], dtype=self.dtype)
+        except queue.Empty:
+            pass
 
         if self.verbose:
             print("[Audio Interface] Interrupted")

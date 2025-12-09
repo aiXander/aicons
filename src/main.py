@@ -1,13 +1,14 @@
 """
-Main Application - ElevenLabs Agent Controller UI.
+Main Application - ElevenLabs Agent Controller.
 
-This module provides a Tkinter-based UI for controlling the ElevenLabs
+This module provides the business logic and orchestration for the ElevenLabs
 conversational AI agent with virtual cable audio routing.
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
 import sys
+import logging
+import time
 from typing import Optional
 
 from elevenlabs.client import ElevenLabs
@@ -17,14 +18,15 @@ from .config import load_config, validate_config, print_config, AppConfig, Confi
 from .device_manager import validate_devices
 from .audio_interface import VirtualCableInterface
 from .monitor_loop import AudioMonitor
+from .ui import AgentUI, UICallbacks, TextHandler, Theme
 
 
 class AgentApp:
     """
     Main application class for the ElevenLabs Agent Controller.
 
-    Manages the UI and orchestrates the conversation session,
-    audio interface, and monitor loop.
+    Manages the conversation session, audio interface, and monitor loop.
+    Delegates all UI to the AgentUI class.
     """
 
     def __init__(self, root: tk.Tk, config: AppConfig):
@@ -38,11 +40,6 @@ class AgentApp:
         self.root = root
         self.config = config
 
-        # Configure window
-        self.root.title(config.ui.window_title)
-        self.root.geometry(f"{config.ui.window_width}x{config.ui.window_height}")
-        self.root.resizable(False, False)
-
         # Initialize ElevenLabs client
         self.client = ElevenLabs(api_key=config.api_key)
 
@@ -51,96 +48,65 @@ class AgentApp:
         self.audio_interface: Optional[VirtualCableInterface] = None
         self.monitor: Optional[AudioMonitor] = None
 
-        # Build UI
-        self._build_ui()
+        # Prepare config info for UI display
+        config_info = {
+            "Agent ID": f"{config.agent_id[:24]}...",
+            "Microphone": f"Device {config.devices.mic_id}",
+            "Virtual Cable": f"Device {config.devices.cable_id}",
+            "Speakers": f"Device {config.devices.speaker_id}",
+            "Sample Rate": f"{config.audio.sample_rate} Hz",
+        }
 
-        # Handle window close
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _build_ui(self) -> None:
-        """Build the user interface."""
-        # Main frame with padding
-        main_frame = ttk.Frame(self.root, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Status section
-        status_frame = ttk.LabelFrame(main_frame, text="Status", padding="10")
-        status_frame.pack(fill=tk.X, pady=(0, 15))
-
-        self.status_label = ttk.Label(
-            status_frame,
-            text="READY",
-            font=("Helvetica", 18, "bold"),
-            foreground="gray",
+        # Create UI callbacks
+        callbacks = UICallbacks(
+            on_toggle_conversation=self._toggle_conversation,
+            on_toggle_pause=self._toggle_pause,
+            on_close=self._on_close,
         )
-        self.status_label.pack(pady=10)
 
-        # Control buttons
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-
-        # Start button
-        self.start_btn = ttk.Button(
-            button_frame,
-            text="Start Conversation",
-            command=self._start_conversation,
-            style="Start.TButton",
+        # Create UI
+        self.ui = AgentUI(
+            root=root,
+            window_title=config.ui.window_title,
+            config_info=config_info,
+            callbacks=callbacks,
         )
-        self.start_btn.pack(fill=tk.X, pady=5)
 
-        # Pause button
-        self.pause_btn = ttk.Button(
-            button_frame,
-            text="Pause Audio",
-            command=self._toggle_pause,
-            state="disabled",
+        # Setup logging to debug panel
+        self._setup_logging()
+
+        # Log startup
+        self.logger.info("Application initialized")
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        self.logger.debug(f"Screen size: {screen_width}x{screen_height}")
+
+    def _setup_logging(self) -> None:
+        """Setup logging to write to the debug panel."""
+        self.logger = logging.getLogger("AgentApp")
+        self.logger.setLevel(logging.DEBUG)
+
+        # Create handler for debug text widget
+        text_handler = TextHandler(self.ui.get_debug_log_widget())
+        text_handler.setLevel(logging.DEBUG)
+
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(message)s',
+            datefmt='%H:%M:%S'
         )
-        self.pause_btn.pack(fill=tk.X, pady=5)
+        text_handler.setFormatter(formatter)
 
-        # Stop button
-        self.stop_btn = ttk.Button(
-            button_frame,
-            text="Stop Conversation",
-            command=self._stop_conversation,
-            state="disabled",
-            style="Stop.TButton",
-        )
-        self.stop_btn.pack(fill=tk.X, pady=5)
-
-        # Info section
-        info_frame = ttk.LabelFrame(main_frame, text="Info", padding="10")
-        info_frame.pack(fill=tk.X, pady=(15, 0))
-
-        agent_label = ttk.Label(
-            info_frame,
-            text=f"Agent: {self.config.agent_id[:20]}...",
-            font=("Helvetica", 9),
-        )
-        agent_label.pack(anchor=tk.W)
-
-        device_label = ttk.Label(
-            info_frame,
-            text=f"Mic: {self.config.devices.mic_id} | Cable: {self.config.devices.cable_id} | Speaker: {self.config.devices.speaker_id}",
-            font=("Helvetica", 9),
-        )
-        device_label.pack(anchor=tk.W)
-
-        # Configure button styles
-        style = ttk.Style()
-        style.configure("Start.TButton", font=("Helvetica", 11))
-        style.configure("Stop.TButton", font=("Helvetica", 11))
-
-    def _update_status(self, text: str, color: str) -> None:
-        """Update the status label."""
-        self.status_label.config(text=text, foreground=color)
-        self.root.update_idletasks()
+        # Add handler to logger
+        self.logger.addHandler(text_handler)
 
     def _start_conversation(self) -> None:
         """Start the conversation session."""
         try:
-            self._update_status("CONNECTING...", "orange")
+            self.ui.update_status("CONNECTING", "connecting")
+            self.logger.info("Starting conversation session...")
 
-            # Create audio interface
+            # Create audio interface (but don't start yet)
             self.audio_interface = VirtualCableInterface(
                 input_device_id=self.config.devices.mic_id,
                 output_device_id=self.config.devices.cable_id,
@@ -151,9 +117,9 @@ class AgentApp:
                 buffer_size=self.config.audio.buffer_size,
                 verbose=self.config.debug.verbose_audio,
             )
+            self.logger.debug("Audio interface created")
 
-            # Create and start monitor loop
-            # Monitor uses output_channels since both BlackHole and speakers are stereo
+            # Create monitor loop (but don't start yet - will be started after conversation)
             self.monitor = AudioMonitor(
                 input_device_id=self.config.devices.cable_id,
                 output_device_id=self.config.devices.speaker_id,
@@ -163,16 +129,18 @@ class AgentApp:
                 buffer_size=self.config.audio.buffer_size,
                 verbose=self.config.debug.verbose_audio,
             )
-            self.monitor.start()
+            self.logger.debug("Monitor created")
 
             # Create conversation callbacks
             def on_agent_response(response: str) -> None:
+                self.ui.add_conversation_message("agent", response)
                 if self.config.debug.print_transcripts:
-                    print(f"[Agent] {response}")
+                    self.logger.debug(f"Agent response received: {len(response)} chars")
 
             def on_user_transcript(transcript: str) -> None:
+                self.ui.add_conversation_message("user", transcript)
                 if self.config.debug.print_transcripts:
-                    print(f"[User] {transcript}")
+                    self.logger.debug(f"User transcript received: {len(transcript)} chars")
 
             # Create conversation
             self.conversation = Conversation(
@@ -183,18 +151,34 @@ class AgentApp:
                 callback_agent_response=on_agent_response,
                 callback_user_transcript=on_user_transcript,
             )
+            self.logger.debug("Conversation object created")
 
             # Start session (runs in background, non-blocking)
             self.conversation.start_session()
+            self.logger.info("Session started successfully")
+
+            # Small delay to let audio streams stabilize before starting monitor
+            # This helps avoid macOS CoreAudio context errors
+            time.sleep(0.3)
+
+            # Now start the monitor loop (after conversation's audio interface is running)
+            self.monitor.start()
+            self.logger.debug("Monitor loop started")
 
             # Update UI
-            self._update_status("LIVE", "green")
-            self.start_btn.config(state="disabled")
-            self.pause_btn.config(state="normal")
-            self.stop_btn.config(state="normal")
+            self.ui.update_status("LIVE", "live")
+            self.ui.set_conversation_running(True)
 
         except Exception as e:
+            self.logger.error(f"Failed to start conversation: {e}")
             self._handle_error(str(e))
+
+    def _toggle_conversation(self) -> None:
+        """Toggle between starting and stopping conversation."""
+        if self.ui.conversation_running:
+            self._stop_conversation()
+        else:
+            self._start_conversation()
 
     def _toggle_pause(self) -> None:
         """Toggle pause state of audio interface."""
@@ -202,58 +186,55 @@ class AgentApp:
             is_paused = self.audio_interface.toggle_pause()
 
             if is_paused:
-                self._update_status("PAUSED", "blue")
-                self.pause_btn.config(text="Resume Audio")
+                self.ui.update_status("PAUSED", "paused")
+                self.ui.set_paused(True)
+                self.logger.info("Audio paused")
             else:
-                self._update_status("LIVE", "green")
-                self.pause_btn.config(text="Pause Audio")
+                self.ui.update_status("LIVE", "live")
+                self.ui.set_paused(False)
+                self.logger.info("Audio resumed")
 
     def _stop_conversation(self) -> None:
         """Stop the conversation session."""
-        self._update_status("STOPPING...", "orange")
+        self.ui.update_status("STOPPING", "stopping")
+        self.logger.info("Stopping conversation...")
 
         # End conversation session
         if self.conversation:
             try:
                 self.conversation.end_session()
+                self.logger.debug("Conversation session ended")
             except Exception as e:
-                print(f"[Stop Error] {e}")
+                self.logger.warning(f"Error ending session: {e}")
             self.conversation = None
 
         # Stop monitor
         if self.monitor:
             self.monitor.stop()
+            self.logger.debug("Monitor stopped")
             self.monitor = None
 
         # Clean up audio interface
         self.audio_interface = None
 
         # Reset UI
-        self._update_status("STOPPED", "red")
-        self.start_btn.config(state="normal")
-        self.pause_btn.config(state="disabled", text="Pause Audio")
-        self.stop_btn.config(state="disabled")
-
-    def _on_session_end(self) -> None:
-        """Handle natural session end."""
-        if self.conversation:
-            self._stop_conversation()
-        print("[Session] Ended")
+        self.ui.update_status("STOPPED", "stopped")
+        self.ui.set_conversation_running(False)
+        self.logger.info("Conversation stopped")
 
     def _handle_error(self, error: str) -> None:
         """Handle errors during conversation."""
-        self._update_status("ERROR", "red")
-        self.start_btn.config(state="normal")
-        self.pause_btn.config(state="disabled")
-        self.stop_btn.config(state="disabled")
-
-        messagebox.showerror("Error", f"An error occurred:\n\n{error}")
+        self.ui.update_status("ERROR", "error")
+        self.ui.set_conversation_running(False)
+        self.logger.error(f"Error: {error}")
+        self.ui.show_error("Error", f"An error occurred:\n\n{error}")
 
     def _on_close(self) -> None:
         """Handle window close event."""
+        self.logger.info("Application closing...")
         if self.conversation:
             self._stop_conversation()
-        self.root.destroy()
+        self.ui.destroy()
 
 
 def main() -> None:
